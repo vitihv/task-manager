@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task Manager</title>
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --surface: #1a1a1a;
+      --panel: #161616;
+      --border: #2a2a2a;
+      --text: #e5e5e5;
+      --text-dim: #888;
+      --week: #c45c4a;
+      --waiting: #c4a84a;
+      --projects: #4a9b6a;
+      --someday: #5a7ab0;
+      --accent: #6b8cae;
+      --danger: #8b4545;
+      --radius: 8px;
+      --font: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'Liberation Mono', monospace;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.4;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .app-name {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .app-bar-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .app-bar-actions button {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .app-bar-actions button:hover { color: var(--text); border-color: var(--text-dim); }
+    .app-bar-actions button svg { width: 18px; height: 18px; }
+
+    .board-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      position: relative;
+    }
+    .board {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      padding: 16px;
+      gap: 16px;
+      position: relative;
+      transition: padding 0.25s ease;
+    }
+    .board.today-view { flex-direction: column; max-width: 480px; margin: 0 auto; width: 100%; }
+
+    .board.focus-mode .column {
+      flex: 0 0 0;
+      min-width: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: flex 0.3s ease, opacity 0.3s ease;
+    }
+    .board.focus-mode { justify-content: center; }
+    .board.focus-mode .column.focus-column {
+      flex: 0 1 720px;
+      max-width: 720px;
+      opacity: 1;
+      z-index: 1;
+    }
+    .board-backdrop {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: var(--bg);
+      pointer-events: none;
+    }
+    .board.focus-mode .board-backdrop { display: block; }
+
+    .column {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      overflow: hidden;
+      transition: flex 0.3s ease, opacity 0.3s ease;
+    }
+    .column-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      user-select: none;
+    }
+    .column-header:hover { background: rgba(255,255,255,0.03); }
+    .column-back {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      margin-right: 4px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      color: var(--text-dim);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .column-back:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    .board.focus-mode .column.focus-column .column-back { display: flex; }
+    .board.focus-mode .column.focus-column .column-header { cursor: default; }
+    .board.focus-mode .column.focus-column .column-header:hover { background: transparent; }
+    .board.focus-mode .column:not(.focus-column) .column-header { pointer-events: none; }
+    .zone-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .column[data-zone="week"] .zone-dot { background: var(--week); }
+    .column[data-zone="waiting"] .zone-dot { background: var(--waiting); }
+    .column[data-zone="someday"] .zone-dot { background: var(--someday); }
+    .column[data-zone="projects"] .zone-dot { background: var(--projects); }
+
+    .column-rows {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+      min-height: 200px;
+    }
+
+    .task-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px;
+      min-height: 36px;
+      cursor: pointer;
+    }
+    .task-row:hover { background: rgba(255,255,255,0.03); }
+    .task-row.done .task-title { text-decoration: line-through; color: var(--text-dim); }
+    .task-row.done .task-title.has-link a { color: var(--text-dim); text-decoration: line-through; }
+    .task-row.empty .task-title { color: var(--text-dim); }
+    .task-row.empty .task-title:empty::before { content: 'Add task…'; }
+    .task-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      accent-color: var(--zone-color);
+      cursor: pointer;
+    }
+    .column[data-zone="week"] .task-row input[type="checkbox"] { --zone-color: var(--week); }
+    .column[data-zone="waiting"] .task-row input[type="checkbox"] { --zone-color: var(--waiting); }
+    .column[data-zone="someday"] .task-row input[type="checkbox"] { --zone-color: var(--someday); }
+    .column[data-zone="projects"] .task-row input[type="checkbox"] { --zone-color: var(--projects); }
+    .task-title {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      word-break: break-word;
+      outline: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .task-title.has-link a {
+      text-decoration: underline;
+      cursor: pointer;
+      color: inherit;
+      flex: 1;
+      min-width: 0;
+      word-break: break-word;
+    }
+    .task-row[data-zone="week"] .task-title.has-link a { color: var(--week); }
+    .task-row[data-zone="waiting"] .task-title.has-link a { color: var(--waiting); }
+    .task-row[data-zone="someday"] .task-title.has-link a { color: var(--someday); }
+    .task-row[data-zone="projects"] .task-title.has-link a { color: var(--projects); }
+    .task-row[data-zone="inbox"] .task-title.has-link a { color: var(--accent); }
+    .task-edit-btn {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: var(--text-dim);
+      opacity: 0;
+      transition: opacity 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+    .task-edit-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    .task-row:hover .task-edit-btn { opacity: 1; }
+    .task-edit-btn svg { width: 12px; height: 12px; }
+    .task-row.empty input[type="checkbox"] { pointer-events: none; opacity: 0.5; }
+
+    .column.focus-column .column-rows { padding: 12px 0; }
+    .column.focus-column .task-row {
+      min-height: 48px;
+      padding: 12px 20px;
+      gap: 14px;
+    }
+    .column.focus-column .task-row input[type="checkbox"] { width: 20px; height: 20px; }
+    .column.focus-column .task-title { font-size: 14px; }
+    .column.focus-column .task-row-add { padding: 12px 20px; }
+    .column.focus-column .task-row-add input { padding: 10px 12px; font-size: 14px; }
+
+    .task-row-add {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px;
+    }
+    .task-row-add.visible { display: flex; }
+    .task-row-add input {
+      flex: 1;
+      min-width: 0;
+      padding: 6px 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      border-radius: 4px;
+      outline: none;
+    }
+
+    .task-row-archiving {
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .archive-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0,0,0,0.6);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .archive-overlay.visible { display: flex; }
+    .archive-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      width: 100%;
+      max-width: 640px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .archive-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .archive-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .archive-header-actions { display: flex; gap: 8px; align-items: center; }
+    .archive-header-actions button {
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+    .archive-header-actions button:hover { border-color: var(--text-dim); }
+    .archive-header-actions .btn-clear { color: var(--danger); }
+    .archive-header-actions .btn-clear:hover { border-color: var(--danger); }
+    .archive-body {
+      overflow-y: auto;
+      padding: 16px 20px 24px;
+    }
+    .archive-group { margin-bottom: 20px; }
+    .archive-group:last-child { margin-bottom: 0; }
+    .archive-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .archive-group-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .archive-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 6px;
+    }
+    .archive-item:last-child { margin-bottom: 0; }
+    .archive-item-title { flex: 1; min-width: 0; font-size: 13px; word-break: break-word; }
+    .archive-item-title a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+    .archive-item-title a:hover { opacity: 0.9; }
+    .archive-item-date { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+    .archive-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .archive-item-actions button {
+      padding: 4px 10px;
+      font-size: 11px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .archive-item-actions button:hover { border-color: var(--text-dim); }
+    .archive-item-actions .btn-restore { color: var(--accent); }
+    .archive-item-actions .btn-delete-perm { color: var(--danger); }
+    .archive-empty { color: var(--text-dim); font-size: 13px; text-align: center; padding: 32px 16px; }
+
+    .task-modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0,0,0,0.6);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .task-modal-backdrop.visible { display: flex; }
+    .task-modal-box {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      padding: 20px 24px 24px;
+    }
+    .task-modal-box:focus { outline: none; }
+    .task-modal-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .task-modal-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    .task-modal .field { margin-bottom: 14px; }
+    .task-modal .field:last-of-type { margin-bottom: 0; }
+    .task-modal label {
+      display: block;
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .task-modal input, .task-modal textarea, .task-modal select {
+      width: 100%;
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      border-radius: 4px;
+    }
+    .task-modal textarea { min-height: 64px; resize: vertical; }
+    .task-modal-link-preview { margin-top: 4px; font-size: 12px; }
+    .task-modal-link-preview a { color: var(--accent); text-decoration: none; }
+    .task-modal-link-preview a:hover { text-decoration: underline; }
+    .task-modal-actions {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .task-modal-actions .btn-save {
+      padding: 10px 16px;
+      background: var(--accent);
+      border: none;
+      color: var(--bg);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+    .task-modal-actions .btn-save:hover { opacity: 0.9; }
+    .task-modal-actions .btn-delete {
+      padding: 8px 16px;
+      background: transparent;
+      border: none;
+      color: var(--danger);
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .task-modal-actions .btn-delete:hover { text-decoration: underline; }
+
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="app-bar">
+      <span class="app-name">Task Manager</span>
+      <div class="app-bar-actions">
+        <button type="button" id="btn-today" title="Today view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        </button>
+        <button type="button" id="btn-export" title="Export JSON">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        </button>
+        <button type="button" id="btn-import" title="Import JSON">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        </button>
+        <button type="button" id="btn-archive" title="Archive">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8M1 3h22v5H1V3zm10 10h4"/></svg>
+        </button>
+      </div>
+    </header>
+    <input type="file" id="import-file" accept=".json,application/json">
+
+    <div class="board-wrap">
+      <div class="board-backdrop" id="board-backdrop" aria-hidden="true"></div>
+      <div class="board" id="board">
+        <div class="column" data-zone="week">
+          <div class="column-header">
+            <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
+            <span class="zone-dot"></span><span class="zone-name">This Week</span>
+          </div>
+          <div class="column-rows"></div>
+        </div>
+        <div class="column" data-zone="waiting">
+          <div class="column-header">
+            <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
+            <span class="zone-dot"></span><span class="zone-name">Waiting</span>
+          </div>
+          <div class="column-rows"></div>
+        </div>
+        <div class="column" data-zone="someday">
+          <div class="column-header">
+            <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
+            <span class="zone-dot"></span><span class="zone-name">Someday / Async</span>
+          </div>
+          <div class="column-rows"></div>
+        </div>
+        <div class="column" data-zone="projects">
+          <div class="column-header">
+            <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
+            <span class="zone-dot"></span><span class="zone-name">Projects</span>
+          </div>
+          <div class="column-rows"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="archive-overlay" id="archive-overlay" aria-hidden="true">
+      <div class="archive-panel" id="archive-panel">
+        <div class="archive-header">
+          <span class="archive-title">Archive</span>
+          <div class="archive-header-actions">
+            <button type="button" class="btn-clear" id="archive-clear-all">Clear all</button>
+          </div>
+        </div>
+        <div class="archive-body" id="archive-body"></div>
+      </div>
+    </div>
+
+    <div class="task-modal-backdrop" id="task-modal-backdrop" aria-hidden="true">
+      <div class="task-modal-box task-modal" id="task-modal" tabindex="-1">
+        <button type="button" class="task-modal-close" id="task-modal-close" aria-label="Close">&times;</button>
+        <div class="field">
+          <label for="modal-title">Title</label>
+          <input type="text" id="modal-title" class="modal-field" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="modal-notes">Notes</label>
+          <textarea id="modal-notes" class="modal-field" placeholder="Optional"></textarea>
+        </div>
+        <div class="field">
+          <label for="modal-link">Link</label>
+          <input type="text" id="modal-link" class="modal-field" placeholder="https://…" autocomplete="off">
+          <div class="task-modal-link-preview" id="modal-link-preview" style="display:none;"></div>
+        </div>
+        <div class="field">
+          <label for="modal-zone">Zone</label>
+          <select id="modal-zone" class="modal-field"></select>
+        </div>
+        <div class="field" id="modal-waiting-wrap" style="display:none;">
+          <label for="modal-waiting-on">Waiting on</label>
+          <input type="text" id="modal-waiting-on" class="modal-field" placeholder="Person's name" autocomplete="off">
+        </div>
+        <div class="task-modal-actions">
+          <button type="button" class="btn-save" id="task-modal-save">Save</button>
+          <button type="button" class="btn-delete" id="task-modal-delete">Delete task</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+(function() {
+  const STORAGE_KEY = 'taskmanager_data';
+  const ORDER_KEY = 'taskmanager_order';
+  const COLUMNS = ['week', 'waiting', 'someday', 'projects'];
+  const ZONES = ['inbox', 'week', 'waiting', 'projects', 'someday', 'archive'];
+  const ZONES_FOR_SELECT = ['inbox', 'week', 'waiting', 'projects', 'someday'];
+  const MIN_ROWS = 8;
+  const ARCHIVE_FADE_MS = 220;
+  const HASH_TO_ZONE = { 'this-week': 'week', 'waiting': 'waiting', 'someday': 'someday', 'projects': 'projects' };
+  const ZONE_TO_HASH = { week: 'this-week', waiting: 'waiting', someday: 'someday', projects: 'projects' };
+
+  let tasks = [];
+  let nextId = 1;
+  const expandedId = { current: null };
+  let todayView = false;
+  let focusZone = null;
+  let archiveOpen = false;
+  const addingRow = { zone: null, el: null };
+  let addTaskInputJustSubmitted = false;
+
+  function getFocusFromHash() {
+    const hash = (location.hash || '').replace(/^#/, '').toLowerCase();
+    return HASH_TO_ZONE[hash] || null;
+  }
+
+  function setFocus(zone) {
+    focusZone = zone;
+    if (zone) location.hash = ZONE_TO_HASH[zone];
+    else location.hash = '';
+    applyFocusMode();
+  }
+
+  function exitFocus() {
+    focusZone = null;
+    location.hash = '';
+    applyFocusMode();
+  }
+
+  function applyFocusMode() {
+    const board = document.getElementById('board');
+    board.classList.remove('focus-mode', 'focus-week', 'focus-waiting', 'focus-someday', 'focus-projects');
+    document.querySelectorAll('.column').forEach(c => c.classList.remove('focus-column'));
+    if (focusZone) {
+      board.classList.add('focus-mode', 'focus-' + focusZone);
+      const col = document.querySelector('.column[data-zone="' + focusZone + '"]');
+      if (col) col.classList.add('focus-column');
+    }
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw);
+        tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        nextId = typeof data.nextId === 'number' ? data.nextId : nextId;
+        tasks.forEach(function(t) {
+          if (t.notes === undefined) t.notes = '';
+          if (t.link === undefined) t.link = '';
+        });
+      }
+    } catch (_) { tasks = []; }
+    ensureIds();
+  }
+
+  function ensureIds() {
+    tasks.forEach(t => { if (!t.id) t.id = nextId++; });
+    nextId = Math.max(nextId, ...(tasks.length ? tasks.map(t => t.id) : [0]), 0) + 1;
+  }
+
+  function getOrder(zone) {
+    try {
+      const raw = localStorage.getItem(ORDER_KEY);
+      if (!raw) return [];
+      const o = JSON.parse(raw)[zone];
+      return Array.isArray(o) ? o : [];
+    } catch (_) { return []; }
+  }
+
+  function setOrder(zone, idArray) {
+    const all = {};
+    ZONES.forEach(z => { all[z] = getOrder(z); });
+    all[zone] = idArray;
+    localStorage.setItem(ORDER_KEY, JSON.stringify(all));
+  }
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks, nextId }));
+    render();
+  }
+
+  function getTasksByZone(zone) {
+    var inZone = tasks.filter(t => t.zone !== 'archive' && (t.zone === zone || (zone === 'week' && t.zone === 'inbox')));
+    const order = getOrder(zone === 'week' ? 'week' : zone);
+    const inboxOrder = zone === 'week' ? getOrder('inbox') : [];
+    const byId = {};
+    inZone.forEach(t => { byId[t.id] = t; });
+    const ordered = [];
+    const seen = new Set();
+    order.forEach(id => { if (byId[id]) { ordered.push(byId[id]); seen.add(id); } });
+    if (zone === 'week') inboxOrder.forEach(id => { if (byId[id] && !seen.has(id)) { ordered.push(byId[id]); seen.add(id); } });
+    inZone.forEach(t => { if (!seen.has(t.id)) ordered.push(t); });
+    return ordered;
+  }
+
+  function addTask(zone, title) {
+    const trimmed = (title || '').trim();
+    if (!trimmed) return null;
+    const task = {
+      id: nextId++,
+      title: trimmed,
+      notes: '',
+      link: '',
+      zone: zone,
+      waitingOn: '',
+      since: '',
+      nextAction: '',
+      done: false
+    };
+    tasks.push(task);
+    setOrder(zone, getOrder(zone).concat(task.id));
+    save();
+    return task.id;
+  }
+
+  function updateTask(id, updates) {
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    const oldZone = t.zone;
+    Object.assign(t, updates);
+    if (updates.zone && updates.zone !== oldZone) {
+      setOrder(oldZone, getOrder(oldZone).filter(i => i !== id));
+      setOrder(updates.zone, getOrder(updates.zone).concat(id));
+    }
+    save();
+  }
+
+  function deleteTask(id) {
+    if (!confirm('Delete this task?')) return;
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    tasks = tasks.filter(t => t.id !== id);
+    setOrder(t.zone, getOrder(t.zone).filter(i => i !== id));
+    expandedId.current = null;
+    save();
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : s;
+    return d.innerHTML;
+  }
+  function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function zoneLabel(z) {
+    const labels = { inbox: 'INBOX', week: 'THIS WEEK', waiting: 'WAITING', projects: 'PROJECTS', someday: 'SOMEDAY / ASYNC', archive: 'ARCHIVE' };
+    return labels[z] || z;
+  }
+
+  function formatCompletedDate(isoStr) {
+    if (!isoStr) return '';
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (_) { return isoStr; }
+  }
+
+  function archiveTask(taskId) {
+    const t = tasks.find(x => x.id === taskId);
+    if (!t || t.zone === 'archive') return;
+    const fromZone = t.zone;
+    updateTask(taskId, {
+      done: true,
+      zone: 'archive',
+      originalZone: fromZone,
+      completedAt: new Date().toISOString()
+    });
+  }
+
+  function restoreTask(taskId) {
+    const t = tasks.find(x => x.id === taskId);
+    if (!t || t.zone !== 'archive') return;
+    const backTo = t.originalZone || 'inbox';
+    setOrder('archive', getOrder('archive').filter(i => i !== taskId));
+    updateTask(taskId, { zone: backTo, done: false, originalZone: undefined, completedAt: undefined });
+    renderArchive();
+  }
+
+  function deletePermanently(taskId) {
+    const t = tasks.find(x => x.id === taskId);
+    if (!t) return;
+    if (!confirm('Delete this task permanently?')) return;
+    tasks = tasks.filter(x => x.id !== taskId);
+    setOrder(t.zone, getOrder(t.zone).filter(i => i !== taskId));
+    save();
+    renderArchive();
+  }
+
+  function clearAllArchive() {
+    const archived = tasks.filter(t => t.zone === 'archive');
+    if (archived.length === 0) return;
+    if (!confirm('Clear all ' + archived.length + ' archived tasks? This cannot be undone.')) return;
+    tasks = tasks.filter(t => t.zone !== 'archive');
+    setOrder('archive', []);
+    save();
+    renderArchive();
+    if (document.getElementById('archive-body').querySelectorAll('.archive-group').length === 0) closeArchive();
+  }
+
+  function openArchive() {
+    archiveOpen = true;
+    document.getElementById('archive-overlay').classList.add('visible');
+    document.getElementById('archive-overlay').setAttribute('aria-hidden', 'false');
+    renderArchive();
+  }
+
+  function closeArchive() {
+    archiveOpen = false;
+    document.getElementById('archive-overlay').classList.remove('visible');
+    document.getElementById('archive-overlay').setAttribute('aria-hidden', 'true');
+  }
+
+  function renderArchive() {
+    const body = document.getElementById('archive-body');
+    const archived = tasks.filter(t => t.zone === 'archive').slice().sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
+    const byZone = {};
+    archived.forEach(t => {
+      const z = t.originalZone || 'inbox';
+      if (!byZone[z]) byZone[z] = [];
+      byZone[z].push(t);
+    });
+    const zoneOrder = ['week', 'inbox', 'waiting', 'someday', 'projects'];
+    let html = '';
+    if (archived.length === 0) {
+      html = '<div class="archive-empty">No archived tasks.</div>';
+    } else {
+      zoneOrder.forEach(z => {
+        const list = byZone[z];
+        if (!list || list.length === 0) return;
+        const dotColor = z === 'week' ? 'var(--week)' : z === 'waiting' ? 'var(--waiting)' : z === 'someday' ? 'var(--someday)' : z === 'projects' ? 'var(--projects)' : 'var(--text-dim)';
+        html += '<div class="archive-group"><div class="archive-group-title"><span class="archive-group-dot" style="background:' + dotColor + '"></span>' + zoneLabel(z) + '</div>';
+        list.forEach(t => {
+          const linkUrl = (t.link || '').trim();
+          const titleHtml = linkUrl ? '<a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">' + escapeHtml(t.title || '') + '</a>' : escapeHtml(t.title || '');
+          html += '<div class="archive-item" data-id="' + t.id + '"><span class="archive-item-title">' + titleHtml + '</span><span class="archive-item-date">' + escapeHtml(formatCompletedDate(t.completedAt)) + '</span><div class="archive-item-actions"><button type="button" class="btn-restore">Restore</button><button type="button" class="btn-delete-perm">Delete permanently</button></div></div>';
+        });
+        html += '</div>';
+      });
+    }
+    body.innerHTML = html;
+    body.querySelectorAll('.btn-restore').forEach(btn => {
+      btn.addEventListener('click', function(e) { e.stopPropagation(); restoreTask(Number(this.closest('.archive-item').dataset.id)); });
+    });
+    body.querySelectorAll('.btn-delete-perm').forEach(btn => {
+      btn.addEventListener('click', function(e) { e.stopPropagation(); deletePermanently(Number(this.closest('.archive-item').dataset.id)); });
+    });
+  }
+
+  const PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+  function renderTaskRow(task, zone) {
+    const row = document.createElement('div');
+    row.className = 'task-row' + (task.done ? ' done' : '');
+    row.dataset.id = task.id;
+    row.dataset.zone = task.zone || '';
+    const linkUrl = (task.link || '').trim();
+    const titleContent = linkUrl
+      ? '<a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">' + escapeHtml(task.title || '') + '</a><button type="button" class="task-edit-btn" aria-label="Edit task">' + PENCIL_SVG + '</button>'
+      : escapeHtml(task.title || '');
+    const titleClass = 'task-title' + (linkUrl ? ' has-link' : '');
+    row.innerHTML =
+      '<input type="checkbox" ' + (task.done ? 'checked' : '') + '>' +
+      '<span class="' + titleClass + '">' + titleContent + '</span>';
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    const titleSpan = row.querySelector('.task-title');
+    checkbox.addEventListener('change', function(e) {
+      e.stopPropagation();
+      if (this.checked) {
+        row.classList.add('task-row-archiving');
+        setTimeout(function() { archiveTask(task.id); }, ARCHIVE_FADE_MS);
+      } else {
+        updateTask(task.id, { done: false });
+      }
+    });
+    titleSpan.addEventListener('click', function(e) {
+      if (e.target.closest('a')) return;
+      if (e.target.closest('.task-edit-btn')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openTaskModal(task);
+        return;
+      }
+      if (!linkUrl) openTaskModal(task);
+    });
+    return row;
+  }
+
+  function openTaskModal(task) {
+    expandedId.current = task.id;
+    const backdrop = document.getElementById('task-modal-backdrop');
+    const box = document.getElementById('task-modal');
+    box.dataset.taskId = String(task.id);
+    document.getElementById('modal-title').value = task.title || '';
+    document.getElementById('modal-notes').value = task.notes || '';
+    document.getElementById('modal-link').value = task.link || '';
+    const zoneSelect = document.getElementById('modal-zone');
+    zoneSelect.innerHTML = ZONES_FOR_SELECT.map(z => '<option value="' + z + '"' + (z === task.zone ? ' selected' : '') + '>' + zoneLabel(z) + '</option>').join('');
+    document.getElementById('modal-waiting-on').value = task.waitingOn || '';
+    document.getElementById('modal-waiting-wrap').style.display = task.zone === 'waiting' ? 'block' : 'none';
+    updateModalLinkPreview();
+    backdrop.classList.add('visible');
+    backdrop.setAttribute('aria-hidden', 'false');
+    document.getElementById('modal-title').focus();
+  }
+
+  function updateModalLinkPreview() {
+    const linkInput = document.getElementById('modal-link');
+    const preview = document.getElementById('modal-link-preview');
+    const v = (linkInput.value || '').trim();
+    if (!v) {
+      preview.style.display = 'none';
+      preview.innerHTML = '';
+      return;
+    }
+    preview.style.display = 'block';
+    preview.innerHTML = 'Open: <a href="' + escapeAttr(v) + '" target="_blank" rel="noopener">' + escapeHtml(v) + '</a>';
+  }
+
+  function closeTaskModal() {
+    expandedId.current = null;
+    document.getElementById('task-modal-backdrop').classList.remove('visible');
+    document.getElementById('task-modal-backdrop').setAttribute('aria-hidden', 'true');
+  }
+
+  function saveTaskModal() {
+    const box = document.getElementById('task-modal');
+    const id = Number(box.dataset.taskId);
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    const updates = {
+      title: (document.getElementById('modal-title').value || '').trim() || '',
+      notes: document.getElementById('modal-notes').value || '',
+      link: (document.getElementById('modal-link').value || '').trim() || '',
+      zone: document.getElementById('modal-zone').value || t.zone
+    };
+    if (updates.zone === 'waiting') updates.waitingOn = (document.getElementById('modal-waiting-on').value || '').trim();
+    updateTask(id, updates);
+    closeTaskModal();
+  }
+
+  function deleteTaskFromModal() {
+    const box = document.getElementById('task-modal');
+    const id = Number(box.dataset.taskId);
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    tasks = tasks.filter(x => x.id !== id);
+    setOrder(t.zone, getOrder(t.zone).filter(i => i !== id));
+    expandedId.current = null;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks, nextId }));
+    closeTaskModal();
+    render();
+  }
+
+  function renderEmptyRow(zone, index) {
+    const row = document.createElement('div');
+    row.className = 'task-row empty';
+    row.dataset.zone = zone;
+    row.dataset.emptyIndex = index;
+    row.innerHTML = '<input type="checkbox" disabled><span class="task-title"></span>';
+    row.addEventListener('click', function(e) {
+      if (addingRow.zone === zone && addingRow.el) return;
+      e.stopPropagation();
+      const addRow = document.createElement('div');
+      addRow.className = 'task-row-add visible';
+      addRow.dataset.zone = zone;
+      addRow.innerHTML = '<input type="checkbox" disabled><input type="text" placeholder="Task title…" class="new-task-input">';
+      row.replaceWith(addRow);
+      addingRow.zone = zone;
+      addingRow.el = addRow;
+      const input = addRow.querySelector('.new-task-input');
+      input.focus();
+      input.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          const title = input.value.trim();
+          if (title) {
+            addTaskInputJustSubmitted = true;
+            addTask(zone, title);
+          }
+          addingRow.zone = null;
+          addingRow.el = null;
+          render();
+        }
+        if (ev.key === 'Escape') {
+          addingRow.zone = null;
+          addingRow.el = null;
+          render();
+        }
+      });
+      input.addEventListener('blur', function() {
+        if (addTaskInputJustSubmitted) {
+          addTaskInputJustSubmitted = false;
+          addingRow.zone = null;
+          addingRow.el = null;
+          return;
+        }
+        const title = input.value.trim();
+        if (title) addTask(zone, title);
+        addingRow.zone = null;
+        addingRow.el = null;
+        render();
+      });
+    });
+    return row;
+  }
+
+  function render() {
+    const cols = todayView ? [document.querySelector('.column[data-zone="week"]')] : document.querySelectorAll('.column');
+    const toRender = todayView ? ['week'] : COLUMNS;
+    document.getElementById('board').classList.toggle('today-view', todayView);
+    document.querySelectorAll('.column').forEach(c => { c.style.display = todayView && c.dataset.zone !== 'week' ? 'none' : ''; });
+    toRender.forEach(function(zone, i) {
+      const col = cols[i];
+      if (!col) return;
+      const container = col.querySelector('.column-rows');
+      container.innerHTML = '';
+      const items = getTasksByZone(zone);
+      items.forEach(task => container.appendChild(renderTaskRow(task, zone)));
+      const needEmpty = MIN_ROWS - items.length;
+      for (let j = 0; j < needEmpty; j++) container.appendChild(renderEmptyRow(zone, j));
+    });
+    applyFocusMode();
+  }
+
+  document.getElementById('btn-today').addEventListener('click', function() {
+    todayView = !todayView;
+    this.setAttribute('title', todayView ? 'Show all columns' : 'Today view');
+    render();
+  });
+
+  document.getElementById('btn-export').addEventListener('click', function() {
+    const order = {};
+    ZONES.forEach(z => { order[z] = getOrder(z); });
+    const data = JSON.stringify({ tasks, nextId, order }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'taskmanager-export.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  document.getElementById('btn-import').addEventListener('click', function() { document.getElementById('import-file').click(); });
+  document.getElementById('import-file').addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+    const fr = new FileReader();
+    fr.onload = function() {
+      try {
+        const data = JSON.parse(fr.result);
+        if (Array.isArray(data.tasks)) {
+          tasks = data.tasks;
+          if (typeof data.nextId === 'number') nextId = data.nextId;
+          ensureIds();
+          if (data.order && typeof data.order === 'object') ZONES.forEach(z => { if (Array.isArray(data.order[z])) setOrder(z, data.order[z]); });
+          else ZONES.forEach(z => setOrder(z, tasks.filter(t => t.zone === z).map(t => t.id)));
+          save();
+        }
+      } catch (_) { alert('Invalid JSON'); }
+      document.getElementById('import-file').value = '';
+    };
+    fr.readAsText(file);
+  });
+
+  document.querySelectorAll('.column-header').forEach(function(header) {
+    header.addEventListener('click', function(e) {
+      if (e.target.closest('.column-back')) return;
+      const col = header.closest('.column');
+      if (col && col.dataset.zone) setFocus(col.dataset.zone);
+    });
+  });
+  document.querySelectorAll('.column-back').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      exitFocus();
+    });
+  });
+  document.getElementById('board').addEventListener('click', function(e) {
+    if (focusZone && e.target === this) exitFocus();
+  });
+  document.getElementById('btn-archive').addEventListener('click', openArchive);
+  document.getElementById('archive-clear-all').addEventListener('click', function(e) { e.stopPropagation(); clearAllArchive(); });
+  document.getElementById('archive-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeArchive();
+  });
+  document.getElementById('archive-panel').addEventListener('click', function(e) { e.stopPropagation(); });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      if (archiveOpen) closeArchive();
+      else if (focusZone) exitFocus();
+      else if (document.getElementById('task-modal-backdrop').classList.contains('visible')) closeTaskModal();
+    }
+  });
+  document.getElementById('task-modal-backdrop').addEventListener('click', function(e) {
+    if (e.target === this) closeTaskModal();
+  });
+  document.getElementById('task-modal').addEventListener('click', function(e) { e.stopPropagation(); });
+  document.getElementById('task-modal-close').addEventListener('click', function(e) { e.stopPropagation(); closeTaskModal(); });
+  document.getElementById('task-modal-save').addEventListener('click', function(e) { e.stopPropagation(); saveTaskModal(); });
+  document.getElementById('task-modal-delete').addEventListener('click', function(e) { e.stopPropagation(); deleteTaskFromModal(); });
+  document.getElementById('modal-zone').addEventListener('change', function() {
+    document.getElementById('modal-waiting-wrap').style.display = this.value === 'waiting' ? 'block' : 'none';
+  });
+  document.getElementById('modal-link').addEventListener('input', updateModalLinkPreview);
+  window.addEventListener('hashchange', function() {
+    const fromHash = getFocusFromHash();
+    if (fromHash !== focusZone) { focusZone = fromHash; applyFocusMode(); }
+  });
+
+  load();
+  focusZone = getFocusFromHash();
+  applyFocusMode();
+  render();
+})();
+  </script>
+</body>
+</html>
