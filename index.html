@@ -515,7 +515,7 @@
     <header class="app-bar">
       <span class="app-name">Task Manager</span>
       <div class="app-bar-actions">
-        <button type="button" id="btn-new-task" title="New task">+</button>
+        <button type="button" id="btn-new-task" title="New task (Cmd+Shift+N / Ctrl+Shift+N)">+</button>
         <button type="button" id="btn-today" title="Today view">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         </button>
@@ -1187,7 +1187,7 @@
   });
   document.getElementById('archive-panel').addEventListener('click', function(e) { e.stopPropagation(); });
   document.addEventListener('keydown', function(e) {
-    if ((e.key === 'n' || e.key === 'N') && (e.metaKey || e.ctrlKey)) {
+    if ((e.key === 'n' || e.key === 'N') && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       const backdrop = document.getElementById('task-modal-backdrop');
       if (backdrop.classList.contains('visible')) return;
       e.preventDefault();
