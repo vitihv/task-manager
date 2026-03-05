@@ -186,6 +186,7 @@
       padding: 6px 14px;
       min-height: 36px;
       cursor: pointer;
+      position: relative;
     }
     .task-row:hover { background: rgba(255,255,255,0.03); }
     .task-row.done .task-title { text-decoration: line-through; color: var(--text-dim); }
@@ -246,6 +247,34 @@
     .task-row:hover .task-edit-btn { opacity: 1; }
     .task-edit-btn svg { width: 12px; height: 12px; }
     .task-row.empty input[type="checkbox"] { pointer-events: none; opacity: 0.5; }
+    .task-drag-handle {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      cursor: grab;
+      opacity: 0;
+      transition: opacity 0.15s;
+      user-select: none;
+      -webkit-user-select: none;
+      pointer-events: none;
+    }
+    .task-row:hover .task-drag-handle { opacity: 1; pointer-events: auto; }
+    .task-drag-handle:active { cursor: grabbing; }
+    .task-row.dragging { opacity: 0.5; }
+    .task-row.dragging .task-drag-handle { cursor: grabbing; }
+    .column-rows-drop-indicator {
+      height: 2px;
+      background: var(--accent);
+      margin: 0;
+      flex-shrink: 0;
+      pointer-events: none;
+    }
 
     .column.focus-column .column-rows { padding: 12px 0; }
     .column.focus-column .task-row {
@@ -602,6 +631,7 @@
   const addingRow = { zone: null, el: null };
   let addTaskInputJustSubmitted = false;
   let modalIsNew = false;
+  const dragState = { id: null, zone: null, dropIndex: null, dropZone: null };
 
   function getFocusFromHash() {
     const hash = (location.hash || '').replace(/^#/, '').toLowerCase();
@@ -855,6 +885,7 @@
       : escapeHtml(task.title || '');
     const titleClass = 'task-title' + (linkUrl ? ' has-link' : '');
     row.innerHTML =
+      '<span class="task-drag-handle" draggable="true" aria-label="Drag to reorder">≡</span>' +
       '<input type="checkbox" ' + (task.done ? 'checked' : '') + '>' +
       '<span class="' + titleClass + '">' + titleContent + '</span>';
     const checkbox = row.querySelector('input[type="checkbox"]');
@@ -878,6 +909,22 @@
       }
       if (!linkUrl) openTaskModal(task);
     });
+    const handle = row.querySelector('.task-drag-handle');
+    if (handle) {
+      handle.addEventListener('dragstart', function(e) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(task.id));
+        dragState.id = task.id;
+        dragState.zone = task.zone || '';
+        row.classList.add('dragging');
+      });
+      handle.addEventListener('dragend', function() {
+        row.classList.remove('dragging');
+        dragState.id = null;
+        dragState.zone = null;
+        document.querySelectorAll('.column-rows-drop-indicator').forEach(function(el) { el.style.display = 'none'; });
+      });
+    }
     return row;
   }
 
@@ -1062,6 +1109,12 @@
       items.forEach(task => container.appendChild(renderTaskRow(task, zone)));
       const needEmpty = MIN_ROWS - items.length;
       for (let j = 0; j < needEmpty; j++) container.appendChild(renderEmptyRow(zone, j));
+      if (!col._dropIndicator) {
+        col._dropIndicator = document.createElement('div');
+        col._dropIndicator.className = 'column-rows-drop-indicator';
+      }
+      col._dropIndicator.style.display = 'none';
+      container.appendChild(col._dropIndicator);
     });
     applyFocusMode();
   }
@@ -1151,6 +1204,60 @@
     if (e.target === this) closeTaskModal();
   });
   document.getElementById('task-modal').addEventListener('click', function(e) { e.stopPropagation(); });
+  document.querySelectorAll('.column-rows').forEach(function(container) {
+    container.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (!dragState.id) return;
+      const col = container.closest('.column');
+      if (!col) return;
+      const colZone = col.dataset.zone;
+      const sameColumn = colZone === dragState.zone || (colZone === 'week' && (dragState.zone === 'week' || dragState.zone === 'inbox'));
+      if (!sameColumn) return;
+      const taskRows = Array.from(container.querySelectorAll('.task-row:not(.empty)')).filter(function(r) { return Number(r.dataset.id) !== dragState.id; });
+      let dropIndex = taskRows.length;
+      for (let i = 0; i < taskRows.length; i++) {
+        if (e.clientY < taskRows[i].getBoundingClientRect().bottom) {
+          dropIndex = i;
+          break;
+        }
+      }
+      dragState.dropIndex = dropIndex;
+      dragState.dropZone = colZone;
+      if (!col._dropIndicator) {
+        col._dropIndicator = document.createElement('div');
+        col._dropIndicator.className = 'column-rows-drop-indicator';
+      }
+      col._dropIndicator.style.display = 'block';
+      if (dropIndex < taskRows.length) container.insertBefore(col._dropIndicator, taskRows[dropIndex]);
+      else container.appendChild(col._dropIndicator);
+    });
+    container.addEventListener('drop', function(e) {
+      e.preventDefault();
+      if (!dragState.id) return;
+      const col = container.closest('.column');
+      if (!col || !col._dropIndicator) return;
+      if (col.dataset.zone !== dragState.dropZone) return;
+      col._dropIndicator.style.display = 'none';
+      const colZone = dragState.dropZone;
+      const dropIndex = dragState.dropIndex;
+      const items = getTasksByZone(colZone);
+      const currentOrder = items.map(function(t) { return t.id; });
+      const newOrder = currentOrder.filter(function(id) { return id !== dragState.id; });
+      newOrder.splice(dropIndex, 0, dragState.id);
+      if (colZone === 'week') {
+        const weekIds = newOrder.filter(function(id) { var t = tasks.find(function(x) { return x.id === id; }); return t && t.zone === 'week'; });
+        const inboxIds = newOrder.filter(function(id) { var t = tasks.find(function(x) { return x.id === id; }); return t && t.zone === 'inbox'; });
+        setOrder('week', weekIds);
+        setOrder('inbox', inboxIds);
+      } else {
+        setOrder(colZone, newOrder);
+      }
+      dragState.id = null;
+      dragState.zone = null;
+      render();
+    });
+  });
   document.getElementById('task-modal-close').addEventListener('click', function(e) { e.stopPropagation(); closeTaskModal(); });
   document.getElementById('task-modal-save').addEventListener('click', function(e) { e.stopPropagation(); saveTaskModal(); });
   document.getElementById('task-modal-delete').addEventListener('click', function(e) { e.stopPropagation(); deleteTaskFromModal(); });
