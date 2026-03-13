@@ -127,6 +127,7 @@
       overflow: hidden;
       transition: flex 0.3s ease, opacity 0.3s ease;
     }
+    .column.drag-over { background: rgba(255,255,255,0.04); }
     .column-header {
       display: flex;
       align-items: center;
@@ -141,6 +142,23 @@
       user-select: none;
     }
     .column-header:hover { background: rgba(255,255,255,0.03); }
+    .column-header-add {
+      margin-left: auto;
+      padding: 0 6px;
+      min-width: 24px;
+      height: 24px;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 4px;
+      opacity: 0.6;
+      transition: color 0.15s, opacity 0.15s;
+    }
+    .column-header-add:hover { color: var(--text); opacity: 1; }
     .column-back {
       display: none;
       align-items: center;
@@ -539,6 +557,7 @@
           <div class="column-header">
             <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
             <span class="zone-dot"></span><span class="zone-name">This Week</span>
+            <button type="button" class="column-header-add" aria-label="New task in this zone">+</button>
           </div>
           <div class="column-rows"></div>
         </div>
@@ -546,6 +565,7 @@
           <div class="column-header">
             <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
             <span class="zone-dot"></span><span class="zone-name">Waiting</span>
+            <button type="button" class="column-header-add" aria-label="New task in this zone">+</button>
           </div>
           <div class="column-rows"></div>
         </div>
@@ -553,6 +573,7 @@
           <div class="column-header">
             <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
             <span class="zone-dot"></span><span class="zone-name">Someday / Async</span>
+            <button type="button" class="column-header-add" aria-label="New task in this zone">+</button>
           </div>
           <div class="column-rows"></div>
         </div>
@@ -560,6 +581,7 @@
           <div class="column-header">
             <button type="button" class="column-back" aria-label="Back to board">&larr;</button>
             <span class="zone-dot"></span><span class="zone-name">Projects</span>
+            <button type="button" class="column-header-add" aria-label="New task in this zone">+</button>
           </div>
           <div class="column-rows"></div>
         </div>
@@ -631,7 +653,7 @@
   const addingRow = { zone: null, el: null };
   let addTaskInputJustSubmitted = false;
   let modalIsNew = false;
-  const dragState = { id: null, zone: null, dropIndex: null, dropZone: null };
+  const dragState = { id: null, zone: null, dropIndex: null, dropZone: null, dropMode: null };
 
   function getFocusFromHash() {
     const hash = (location.hash || '').replace(/^#/, '').toLowerCase();
@@ -922,7 +944,10 @@
         row.classList.remove('dragging');
         dragState.id = null;
         dragState.zone = null;
+        dragState.dropMode = null;
+        dragState.dropZone = null;
         document.querySelectorAll('.column-rows-drop-indicator').forEach(function(el) { el.style.display = 'none'; });
+        document.querySelectorAll('.column').forEach(function(c) { c.classList.remove('drag-over'); });
       });
     }
     return row;
@@ -948,7 +973,8 @@
     document.getElementById('modal-title').focus();
   }
 
-  function openNewTaskModal() {
+  function openNewTaskModal(initialZone) {
+    const zone = initialZone && ZONES_FOR_SELECT.indexOf(initialZone) >= 0 ? initialZone : 'week';
     const backdrop = document.getElementById('task-modal-backdrop');
     if (backdrop.classList.contains('visible')) return;
     modalIsNew = true;
@@ -959,9 +985,9 @@
     document.getElementById('modal-notes').value = '';
     document.getElementById('modal-link').value = '';
     const zoneSelect = document.getElementById('modal-zone');
-    zoneSelect.innerHTML = ZONES_FOR_SELECT.map(z => '<option value="' + z + '"' + (z === 'week' ? ' selected' : '') + '>' + zoneLabel(z) + '</option>').join('');
+    zoneSelect.innerHTML = ZONES_FOR_SELECT.map(z => '<option value="' + z + '"' + (z === zone ? ' selected' : '') + '>' + zoneLabel(z) + '</option>').join('');
     document.getElementById('modal-waiting-on').value = '';
-    document.getElementById('modal-waiting-wrap').style.display = 'none';
+    document.getElementById('modal-waiting-wrap').style.display = zone === 'waiting' ? 'block' : 'none';
     const preview = document.getElementById('modal-link-preview');
     preview.style.display = 'none';
     preview.innerHTML = '';
@@ -1162,8 +1188,18 @@
   document.querySelectorAll('.column-header').forEach(function(header) {
     header.addEventListener('click', function(e) {
       if (e.target.closest('.column-back')) return;
+      if (e.target.closest('.column-header-add')) return;
       const col = header.closest('.column');
       if (col && col.dataset.zone) setFocus(col.dataset.zone);
+    });
+  });
+  document.querySelectorAll('.column-header-add').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const col = this.closest('.column');
+      const zone = col && col.dataset.zone ? col.dataset.zone : 'week';
+      openNewTaskModal(zone);
     });
   });
   document.querySelectorAll('.column-back').forEach(function(btn) {
@@ -1212,31 +1248,60 @@
       const col = container.closest('.column');
       if (!col) return;
       const colZone = col.dataset.zone;
-      const sameColumn = colZone === dragState.zone || (colZone === 'week' && (dragState.zone === 'week' || dragState.zone === 'inbox'));
-      if (!sameColumn) return;
-      const taskRows = Array.from(container.querySelectorAll('.task-row:not(.empty)')).filter(function(r) { return Number(r.dataset.id) !== dragState.id; });
-      let dropIndex = taskRows.length;
-      for (let i = 0; i < taskRows.length; i++) {
-        if (e.clientY < taskRows[i].getBoundingClientRect().bottom) {
-          dropIndex = i;
-          break;
+      const sourceCol = (dragState.zone === 'inbox' || dragState.zone === 'week') ? 'week' : dragState.zone;
+      const sameColumn = colZone === sourceCol;
+      document.querySelectorAll('.column').forEach(function(c) { c.classList.remove('drag-over'); });
+      if (sameColumn) {
+        dragState.dropMode = 'reorder';
+        dragState.dropZone = colZone;
+        const taskRows = Array.from(container.querySelectorAll('.task-row:not(.empty)')).filter(function(r) { return Number(r.dataset.id) !== dragState.id; });
+        let dropIndex = taskRows.length;
+        for (let i = 0; i < taskRows.length; i++) {
+          if (e.clientY < taskRows[i].getBoundingClientRect().bottom) {
+            dropIndex = i;
+            break;
+          }
         }
+        dragState.dropIndex = dropIndex;
+        if (!col._dropIndicator) {
+          col._dropIndicator = document.createElement('div');
+          col._dropIndicator.className = 'column-rows-drop-indicator';
+        }
+        col._dropIndicator.style.display = 'block';
+        if (dropIndex < taskRows.length) container.insertBefore(col._dropIndicator, taskRows[dropIndex]);
+        else container.appendChild(col._dropIndicator);
+      } else {
+        dragState.dropMode = 'moveZone';
+        dragState.dropZone = colZone;
+        dragState.dropIndex = null;
+        if (col._dropIndicator) col._dropIndicator.style.display = 'none';
+        col.classList.add('drag-over');
       }
-      dragState.dropIndex = dropIndex;
-      dragState.dropZone = colZone;
-      if (!col._dropIndicator) {
-        col._dropIndicator = document.createElement('div');
-        col._dropIndicator.className = 'column-rows-drop-indicator';
-      }
-      col._dropIndicator.style.display = 'block';
-      if (dropIndex < taskRows.length) container.insertBefore(col._dropIndicator, taskRows[dropIndex]);
-      else container.appendChild(col._dropIndicator);
     });
     container.addEventListener('drop', function(e) {
       e.preventDefault();
       if (!dragState.id) return;
       const col = container.closest('.column');
-      if (!col || !col._dropIndicator) return;
+      if (!col) return;
+      document.querySelectorAll('.column').forEach(function(c) { c.classList.remove('drag-over'); });
+      if (dragState.dropMode === 'moveZone') {
+        const newZone = dragState.dropZone;
+        const sourceCol = (dragState.zone === 'inbox' || dragState.zone === 'week') ? 'week' : dragState.zone;
+        if (col.dataset.zone === sourceCol) {
+          dragState.id = null;
+          dragState.zone = null;
+          dragState.dropMode = null;
+          dragState.dropZone = null;
+          return;
+        }
+        updateTask(dragState.id, { zone: newZone });
+        dragState.id = null;
+        dragState.zone = null;
+        dragState.dropMode = null;
+        dragState.dropZone = null;
+        return;
+      }
+      if (!col._dropIndicator) return;
       if (col.dataset.zone !== dragState.dropZone) return;
       col._dropIndicator.style.display = 'none';
       const colZone = dragState.dropZone;
@@ -1255,6 +1320,8 @@
       }
       dragState.id = null;
       dragState.zone = null;
+      dragState.dropMode = null;
+      dragState.dropZone = null;
       render();
     });
   });
