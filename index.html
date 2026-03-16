@@ -6,12 +6,12 @@
   <title>Task Manager</title>
   <style>
     :root {
-      --bg: #0d0d0d;
-      --surface: #1a1a1a;
-      --panel: #161616;
+      --bg: #2a2a2a;
+      --surface: #262626;
+      --panel: #333333;
       --border: #2a2a2a;
-      --text: #e5e5e5;
-      --text-dim: #888;
+      --text: #ffffff;
+      --text-dim: #aaaaaa;
       --week: #c45c4a;
       --waiting: #c4a84a;
       --projects: #4a9b6a;
@@ -409,7 +409,7 @@
     .archive-item-title { flex: 1; min-width: 0; font-size: 13px; word-break: break-word; }
     .archive-item-title a { color: var(--accent); text-decoration: underline; cursor: pointer; }
     .archive-item-title a:hover { opacity: 0.9; }
-    .archive-item-date { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+    .archive-item-date { font-size: 11px; color: #cccccc; flex-shrink: 0; }
     .archive-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
     .archive-item-actions button {
       padding: 4px 10px;
@@ -490,8 +490,8 @@
       font-size: 13px;
       border-radius: 4px;
     }
-    .task-modal textarea { min-height: 64px; resize: vertical; }
-    .task-modal-link-preview { margin-top: 4px; font-size: 12px; }
+    .task-modal textarea { min-height: 64px; resize: vertical; color: #cccccc; }
+    .task-modal-link-preview { margin-top: 4px; font-size: 12px; color: #cccccc; }
     .task-modal-link-preview a { color: var(--accent); text-decoration: none; }
     .task-modal-link-preview a:hover { text-decoration: underline; }
     .task-modal-actions {
